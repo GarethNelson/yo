@@ -67,7 +67,7 @@ class YoBlockchainFollower(YoBaseService):
             to_username=vote_info['author'],
             json_data=json.dumps(vote_info),
             notify_type=VOTE,
-            priority_level=Priority.LOW)
+            priority_level=int(Priority.LOW))
         return True
 
     async def handle_follow(self, op):

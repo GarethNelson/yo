@@ -375,14 +375,20 @@ class YoDatabase:
                                  notification)
             return False
 
-    def mark_sent(self, nid, transport='unknown'):
+    def mark_sent(self, notification_object, transport):
         """ Marks a notification as sent (updates sent_at timestamp)
         """
         now = datetime.datetime.now()
-        logger.debug('DB: Marking %s as sent at %s', nid, str(now))
+        logger.debug('DB: Marking %s as sent via transport \'%s\' at %s', str(notification_object), transport, str(now))
         with self.acquire_conn() as conn:
+             tx = conn.begin()
              try:
-                query = actions_table.insert(values=dict(nid=nid,transport=transport,status='Sent',created_at=now))
+                query = actions_table.insert(values=dict(nid=notification_object['nid'],
+                                                         transport=transport,
+                                                         to_username=notification_object['to_username'],
+                                                         status='Sent',
+                                                         created_at=now,
+                                                         priority_level=notification_object['priority_level']))
                 conn.execute(query)
                 tx.commit()
              except:
@@ -512,10 +518,10 @@ class YoDatabase:
                     values(transports=json.dumps(transports))
                 result = conn.execute(stmt).fetchone()
                 success = True
-            except sa.exc.SQLAlchemyError:
+            except sa.exc.SQLAlchemyError as e:
                 logger.info(
-                    'Exception occurred trying to update transports for user %s to %s',
-                    username, str(transports))
+                       'Exception occurred trying to update transports for user %s to %s: %s',
+                    username, str(transports),str(e))
         if not success:
             result = self.create_user(username, transports=transports)
             if result:
@@ -555,13 +561,16 @@ class YoDatabase:
                 query = actions_table.select().where(
                     actions_table.c.to_username == to_username)
                 query = query.where(
-                    actions_table.c.priority_level >= priority)
+                    actions_table.c.priority_level >= int(priority))
                 query = query.where(
                     actions_table.c.created_at >= start_time)
-                select_response = conn.execute(query)
-                retval = select_response.rowcount
+                select_response = conn.execute(query).fetchall()
+                if select_response is None: retval = 0
+                logger.debug('Existing notifications at priority %d for user %s: %s', int(priority), to_username, str(select_response))
+                retval = len(select_response)
             except BaseException:
                 logger.exception('Exception occurred!')
+        if retval < 0: return 0
         return retval
 
     def create_wwwpoll_notification(self,

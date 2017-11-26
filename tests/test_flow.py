@@ -4,7 +4,10 @@
 
 """
 
+
 import pytest
+
+
 import json
 import uuid
 from yo.services import blockchain_follower
@@ -12,6 +15,7 @@ from yo.services import notification_sender
 from yo.services import api_server
 from yo import config
 from yo.transports import base_transport
+
 
 @pytest.fixture(autouse=True)
 def add_mock_transport_type(monkeypatch):
