@@ -2,7 +2,8 @@
 
 Yo is a notifications service for the Steem blockchain, it streams events from the blockchain and searches them for events.
 
-Please note that the changes made in this repo are not covered under the original MIT license unless and until stated otherwise by the developer.
+
+***Please note that the changes made in this repo are not covered under the original MIT license unless and until stated otherwise by the developer, they may only be be used for the purposes of review.***
 
 ## Yo components:
 
