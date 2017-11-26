@@ -45,7 +45,7 @@ test: test-without-lint test-pylint ## run pylint tests locally
 
 .PHONY: test-without-lint
 test-without-lint:
-	pipenv run pytest -vv --cov=yo --cov-report html tests
+	pipenv run pytest -vvvv --cov=yo --cov-report html tests
 
 .PHONY: test-pylint
 test-pylint:

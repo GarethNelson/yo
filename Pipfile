@@ -1,11 +1,16 @@
 [[source]]
+
 verify_ssl = true
 url = "https://pypi.python.org/simple"
 
+
 [requires]
+
 python_version = "3.6"
 
+
 [packages]
+
 ujson = "*"
 aiohttp = "*"
 jsonrpcclient = "*"
@@ -25,12 +30,15 @@ steem = "*"
 sendgrid = "*"
 twilio = "*"
 premailer = "*"
-SQLAlchemy = "*"
-Jinja2 = "*"
+sqlalchemy = "*"
+"jinja2" = "*"
+pytest-logging = "*"
+
 
 [dev-packages]
+
 ipython = "*"
-pep8 = "*"
+"pep8" = "*"
 pytest = "*"
 pytest-console-scripts = "*"
 pytest-docker = "*"
@@ -39,8 +47,8 @@ pytest-cov = "*"
 pytest-asyncio = "*"
 recommonmark = "*"
 yapf = "*"
-autopep8 = "*"
+"autopep8" = "*"
 docker = "*"
 isort = "*"
 autoflake = "*"
-pre_commit = "*"
+pre-commit = "*"

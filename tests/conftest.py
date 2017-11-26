@@ -8,8 +8,9 @@ import pytest
 
 from yo.db_utils import init_db
 
-
-logging.basicConfig(level='DEBUG')
+@pytest.fixture(autouse=True)
+def set_loglevel():
+    logging.basicConfig(level=logging.DEBUG)
 
 def add_test_users(sqlite_db):
     sqlite_db.create_user('test_user1')
