@@ -125,7 +125,9 @@ actions_table = sa.Table(
     metadata,
     sa.Column('aid', sa.Integer, primary_key=True),
     sa.Column('nid', None, sa.ForeignKey('yo_notifications.nid')),
-    sa.Column('transport', sa.String(20), nullable=False, index=True),
+    sa.Column('to_username', sa.String(20), nullable=False, index=True), # yes, denormalised - this is so we can archive the 2 tables seperately
+    sa.Column('transport', sa.String(20), nullable=True, index=True),
+    sa.Column('priority_level', sa.Integer, index=True, default=3),
     sa.Column('status', sa.String(20), nullable=False, index=True),
     sa.Column('created_at', sa.DateTime, default=sa.func.now(), index=True),
     sa.UniqueConstraint('aid', 'nid', 'transport', name='yo_wwwpoll_idx'),
@@ -373,6 +375,20 @@ class YoDatabase:
                                  notification)
             return False
 
+    def mark_sent(self, nid, transport='unknown'):
+        """ Marks a notification as sent (updates sent_at timestamp)
+        """
+        now = datetime.datetime.now()
+        logger.debug('DB: Marking %s as sent at %s', nid, str(now))
+        with self.acquire_conn() as conn:
+             try:
+                query = actions_table.insert(values=dict(nid=nid,transport=transport,status='Sent',created_at=now))
+                conn.execute(query)
+                tx.commit()
+             except:
+                logger.exception('Exception occurred while marking %s as sent', nid)
+                tx.rollback()
+
     def wwwpoll_mark_shown(self, nid):
         logger.debug('wwwpoll: marking %s as shown', nid)
         with self.acquire_conn() as conn:
@@ -536,13 +552,12 @@ class YoDatabase:
         retval = 0
         with self.acquire_conn() as conn:
             try:
-                query = notifications_table.select().where(
-                    notifications_table.c.to_username == to_username)
+                query = actions_table.select().where(
+                    actions_table.c.to_username == to_username)
                 query = query.where(
-                    notifications_table.c.priority_level >= priority)
-                query = query.where(notifications_table.c.sent)
+                    actions_table.c.priority_level >= priority)
                 query = query.where(
-                    notifications_table.c.sent_at >= start_time)
+                    actions_table.c.created_at >= start_time)
                 select_response = conn.execute(query)
                 retval = select_response.rowcount
             except BaseException:

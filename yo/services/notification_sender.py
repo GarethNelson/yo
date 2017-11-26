@@ -54,11 +54,15 @@ class YoNotificationSender(YoBaseService):
                         'notify_type']]:
                     logger.info('Sending notification %s to transport %s',
                                 str(notification), str(t[0]))
-                    self.configured_transports[t[0]].send_notification(
-                        to_subdata=t[1],
-                        to_username=username,
-                        notify_type=notification['notify_type'],
-                        data=json.loads(notification['json_data']))
+                    try:
+                       self.configured_transports[t[0]].send_notification(
+                            to_subdata=t[1],
+                            to_username=username,
+                            notify_type=notification['notify_type'],
+                            data=json.loads(notification['json_data']))
+                       self.db.mark_sent(notification_id=notification['nid'],transport=t[0])
+                    except:
+                       logger.exception('Exception occurred when sending notification %s', str(notification))
 
     def init_api(self):
         self.private_api_methods[
