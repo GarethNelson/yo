@@ -1,0 +1,11 @@
+{% extends "_layout.txt" %}
+
+{% block subject -%}
+    You have a new follower
+{%- endblock %}
+
+{# Message body #}
+{% block body %}
+    Hi {{ following }}, you are now being followed by https://steemit.com/@{{ follower }}
+{% endblock %}
+

@@ -1,0 +1,12 @@
+{% extends "_layout.txt" %}
+
+{# Message subject, should never contain newlines #}
+{% block subject -%}
+    Your post on steemit was upvoted!
+{%- endblock %}
+
+{# Message body #}
+{% block body %}
+    Hi there {{ author }}, your post at https://steemit.com/@{{ author }}/{{ permlink }} was upvoted by {{ voter }}.
+{% endblock %}
+

@@ -71,7 +71,6 @@ async def test_vote_flow(sqlite_db):
     assert not ('testupvoter' in mock_tx.received_by_user.keys())
 
 
-@pytest.mark.skip(reason='Will currently fail, should be fixed in other branch')
 @pytest.mark.asyncio
 async def test_follow_flow(sqlite_db):
     """Tests follow events get through to a transport
