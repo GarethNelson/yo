@@ -153,6 +153,18 @@ user_settings_table = sa.Table(
     mysql_engine='InnoDB',
 )
 
+# the below table should have only a single row at any one time
+chain_status_table = sa.Table(
+    'yo_chain_status',
+    metadata,
+    sa.Column('status_id', sa.Integer, primary_key=True),
+    sa.Column('last_processed_block', sa.Integer, index=True),
+    sa.Column('last_processed_time', sa.DateTime, index=True),
+    sa.Column('lock_expires', sa.DateTime, index=True),   # set to the future to keep locked, set to the past to release lock
+    sa.Column('active_follower_id',   sa.String(36), index=True),
+    mysql_engine='InnoDB',
+)
+
 
 def is_duplicate_entry_error(error):
     if isinstance(error, (IntegrityError, SQLiteIntegrityError)):
@@ -181,6 +193,85 @@ class YoDatabase:
     @property
     def backend(self):
         return self.url.get_backend_name()
+    
+    def get_chain_status(self):
+        """ Returns current blockchain status
+        """
+        retval = None
+        with self.acquire_conn() as conn:
+             query = chain_status_table.select()
+             resp = conn.execute(query)
+             if resp is not None:
+                resp = resp.fetchone()
+                if resp is not None:
+                   retval = dict(resp.items())
+        return retval
+
+    def try_update_status(self,follower_id=None, last_processed_block=None, lock_timeout=5):
+        """ Tries to update the chain status
+
+        Fails if one of the following occurs:
+            last_processed_block param <= current last_processed_block in DB
+            active_follower_id != follower_id
+
+        Otherwise, last_processed_block is updated, last_processed_time is set to now and lock_expires is set to the current time + lock_timeout
+
+        Returns the new chain_status, which may or may not be updated
+        """
+        now = datetime.datetime.now()
+        with self.acquire_conn() as conn:
+             tx = conn.begin()
+             query = chain_status_table.update(values=dict(last_processed_block= last_processed_block,
+                                                           last_processed_time = now,
+                                                           lock_expires        = now + datetime.timedelta(seconds = lock_timeout)))
+             query = query.where(chain_status_table.c.active_follower_id == follower_id)
+             query = query.where(chain_status_table.c.last_processed_block <= last_processed_block)
+             try:
+                conn.execute(query)
+                tx.commit()
+             except:
+                tx.rollback()
+
+        return self.get_chain_status()
+
+
+    def try_active_follower(self,follower_id=None,last_processed_block=None,lock_timeout=5):
+        """ Tries to set the currently active blockchain follower to the ID provided
+
+        This only succeeds if the current active follower's lock has expired and there's not a currently open transaction etc
+
+        Not to be confused with try_update_status() above
+
+        last_processed_block will only be changed if the DB is empty, in which case the timestamp will be set to the current time
+
+        lock_timeout is the expiry time in seconds of the lock
+
+        Returns the new blockchain status, which may or may not be updated
+        """
+        now =  datetime.datetime.now()
+        with self.acquire_conn() as conn:
+             tx = conn.begin()
+             # first get the current status
+             query = chain_status_table.select()
+             resp  = conn.execute(query).fetchone()
+             if resp is None:
+                query = chain_status_table.insert(values=dict(active_follower_id=follower_id,
+                                                              last_processed_block=last_processed_block,
+                                                              last_processed_time = now,
+                                                              lock_expires        = now + datetime.timedelta(seconds = lock_timeout)))
+             
+             else:
+                query = chain_status_table.update(values=dict(active_follower_id=follower_id,
+                                                              lock_expires=now + datetime.timedelta(seconds = lock_timeout)))
+
+                query = query.where(chain_status_table.c.lock_expires <= now)
+             try:
+                resp = conn.execute(query)
+                tx.commit()
+             except:
+                tx.rollback()
+        return self.get_chain_status()
+
 
     def _get_notifications(self,
                            table=None,
@@ -259,8 +350,7 @@ class YoDatabase:
                 retval[row['to_username']].append(dict(row.items()))
         return retval
 
-    def _create_notification(self, table=None, **notification):
-        with self.acquire_conn() as conn:
+    def _create_notification(self, conn=None, table=None, **notification):
             tx = conn.begin()
             try:
                 result = conn.execute(table.insert(), **notification)

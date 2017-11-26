@@ -4,6 +4,10 @@ import json
 import logging
 import re
 
+import datetime
+
+import uuid
+
 import steem
 from steem.blockchain import Blockchain
 
@@ -45,6 +49,7 @@ class YoBlockchainFollower(YoBaseService):
         steemd_url = self.yo_app.config.config_data['blockchain_follower'].get(
             'steemd_url', 'https://api.steemit.com')
         self.steemd_rpc = steem.steemd.Steemd(nodes=[steemd_url])
+        self.follower_id = str(uuid.uuid1())
 
     async def store_notification(self, **data):
         data['sent'] = False
@@ -272,7 +277,10 @@ class YoBlockchainFollower(YoBaseService):
                 return op
         return None
 
-    async def async_ops(self, loop, b):
+    def get_start_block(self,b):
+        """ Gets the starting block from configuration
+        """
+
         start_block = str(
             self.yo_app.config.config_data['blockchain_follower'].get(
                 'start_block', ''))
@@ -287,35 +295,52 @@ class YoBlockchainFollower(YoBaseService):
             )  # TODO: handle malformed config in the config module and spit out appropriate errors
             if start_block < 0:
                 start_block = b.get_current_block_num() - start_block
-        ops = b.stream_from(start_block=start_block)
-        while True:
-            next_val = None
-            try:
-                next_val = await loop.run_in_executor(None, next, ops)
-            except Exception:
-                logger.exception('Exception occurred')
-            if next_val:
-                yield next_val
+        return start_block
 
     async def async_task(self):
 
-        queue = asyncio.Queue()
         logger.info('Blockchain follower started')
+        chain = Blockchain(steemd_instance=self.steemd_rpc)
+        start_block = self.get_start_block(chain)
+        block_interval = chain.config().get("STEEMIT_BLOCK_INTERVAL") # we use this to calculate timeouts
+
         while True:
-            try:
-                b = Blockchain(steemd_instance=self.steemd_rpc)
-                while True:
-                    try:
-                        async for op in self.async_ops(self.yo_app.loop, b):
-                            await queue.put(op)
-                            await asyncio.sleep(0)
-                            runner_resp = await self.run_queue(queue)
-                            if runner_resp:
-                                queue.put(runner_resp)
-                    except Exception:
-                        logger.exception('Exception occurred')
-            except Exception:
-                logger.exception('Exception occurred')
+           chain_status = self.db.get_chain_status()
+
+           if chain_status is None: # we must be the first, so let's init stuff
+              chain_status = self.db.try_active_follower(follower_id=self.follower_id,last_processed_block=start_block-1,lock_timeout=block_interval*10) # timeout after 10 blocks go unprocessed
+           else: # an existing follower is in the DB, check if it's expired, and if so take over
+              chain_status = self.db.try_active_follower(follower_id=self.follower_id,lock_timeout=block_interval*10) # we don't overwrite last_processed_block
+
+           if chain_status['active_follower_id'] == self.follower_id: # we are active
+              await self.run_active(chain=chain,start_block=chain_status['last_processed_block']+1,max_blocks=10,block_interval=block_interval)
+           else: # we are not active, so go to sleep for now
+              logger.info('We are not active follower, sleeping until %s', str(chain_status['lock_expires']))
+              now = datetime.datetime.now()
+              sleep_time = chain_status['lock_expires'] - now
+              await asyncio.sleep(sleep_time.total_seconds())
+
+
+    async def run_active(self,chain=None,start_block=None,max_blocks=9,block_interval=2):
+          queue = asyncio.Queue()
+          logger.debug('We are active follower!')
+          if start_block is None: start_block = self.get_start_block(chain)
+          processed_count = 0
+
+          for block_num in range(start_block,start_block+max_blocks):
+              try:
+                 ops = self.steemd_rpc.get_ops_in_block(block_num, False)
+                 for op in ops:
+                       await queue.put(op)
+                       await asyncio.sleep(0)
+                       runner_resp = await self.run_queue(queue)
+                       if runner_resp:
+                          queue.put(runner_resp)
+                 processed_count += 1
+                 new_timeout = ((max_blocks+1) - processed_count) * block_interval # as we process more blocks, shrink our timeout, but leave enough space for another block
+                 self.db.try_update_status(follower_id = self.follower_id, last_processed_block = block_num, lock_timeout = new_timeout)
+              except Exception:
+                 logger.exception('Exception occurred')
 
     def init_api(self):
         pass
