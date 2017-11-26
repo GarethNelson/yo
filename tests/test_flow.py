@@ -77,11 +77,11 @@ async def test_follow_flow(sqlite_db):
     """
     mock_follow_op = {'trx_id':str(uuid.uuid4()),
                           'op':('custom_json',{'required_auths'          :(),
-                                               'required_posting_auths'  :'testfollower',
+                                               'required_posting_auths'  :['testfollower'],
                                                'id'                      :'follow',
-                                               'json'                    :('follow',{'follower ':'testfollower',
+                                               'json'                    :json.dumps(('follow',{'follower':'testfollower',
                                                                                      'following':'testfollowed',
-                                                                                     'what'     :('blog')})
+                                                                                     'what'     :('blog')}))
                                                })}
  
     # boilerplate stuff
