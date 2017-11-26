@@ -105,8 +105,54 @@ async def test_follow_flow(sqlite_db):
     # since we don't run stuff in the background in test suite, manually invoke the notification sender
     await sender.api_trigger_notifications()
 
-    print(mock_tx.received_by_user.items())
-
     # test it got through to our mock transport for testupvoted only
     assert 'testfollowed' in mock_tx.received_by_user.keys()
     assert not ('testfollower' in mock_tx.received_by_user.keys())
+
+
+@pytest.mark.asyncio
+async def test_account_update_flow(sqlite_db):
+    """Tests account_update events get through to a transport
+    """
+
+    # TODO - different types of account_update
+
+    mock_update_op = {'trx_id':str(uuid.uuid4()),
+                          'op':('account_update',{  'account':'testuser',
+                                                     'active':{'account_auths': [],
+                                                               'key_auths':[['STM7qPrQjAfQjsU3QXcXW7vutB6b4hEtT6UjZCYUNTCLuke9becT2',1]],
+                                                               'weight_threshold':1},
+                                                      'owner':{'account_auths':[],
+                                                               'key_auths':[['STM7qPrQjAfQjsU3QXcXW7vutB6b4hEtT6UjZCYUNTCLuke9becT2',1]],
+                                                               'weight_threshold':1},
+                                                    'posting':{'account_auths':[],
+                                                               'key_auths':[['STM7qPrQjAfQjsU3QXcXW7vutB6b4hEtT6UjZCYUNTCLuke9becT2',1]],
+                                                               'weight_threshold':1},
+                                                    'memo_key':'STM8S9siuc6wBQztU2qNSuftcZRew96mdpaJpVRWjbMHTvkMDLMH7',
+                                               'json_metadata':json.dumps({"profile":{"profile_image":"https://example.com/test.jpg","name":"Test User"}})})}
+
+ 
+    # boilerplate stuff
+    yo_db    = sqlite_db    
+    yo_app   = MockApp(yo_db)
+    sender   = notification_sender.YoNotificationSender(db=yo_db,yo_app=yo_app)
+    mock_tx  = MockTransport()
+    sender.configured_transports = {}
+    sender.configured_transports['mock'] = mock_tx
+    API      = api_server.YoAPIServer()
+    follower = blockchain_follower.YoBlockchainFollower(db=yo_db,yo_app=yo_app)
+
+    # configure testuser to use mock transport for account updates
+    transports_obj = {'mock':{'notification_types':['account_update'],'sub_data':''}}
+    await API.api_set_transports(username='testuser',transports=transports_obj,context=dict(yo_db=sqlite_db))
+
+    # handle the mock follow op
+    await follower.notify(mock_update_op)
+
+    # since we don't run stuff in the background in test suite, manually invoke the notification sender
+    await sender.api_trigger_notifications()
+
+    # test it got through to our mock transport for testupvoted only
+    assert 'testuser' in mock_tx.received_by_user.keys()
+
+
